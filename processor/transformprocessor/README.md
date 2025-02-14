@@ -33,10 +33,10 @@ Each statement can access and transform telemetry using functions, and allows th
 
 The Transform Processor allows configuring OTTL statements for traces, metrics, and logs.
 
-### General Config
-
 > [!NOTE]
 > If you don't know how to write OTTL statements yet, first see OTTL's [Getting Started](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/pkg/ottl/README.md#getting-started) docs.
+
+Format:
 
 ```yaml
 transform:
@@ -64,21 +64,15 @@ The top-level `error_mode` can be overridden at statement group level, offering 
 | silent     | The processor ignores errors returned by statements, does not log the error, and continues on to the next statement.                        |
 | propagate  | The processor returns the error up the pipeline.  This will result in the payload being dropped from the collector.                         |
 
-### Basic Config
+### Statements Config
 
-> [!NOTE]
-> If you don't know how to write OTTL statements yet, first see OTTL's [Getting Started](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/pkg/ottl/README.md#getting-started) docs.
-
-The basic configuration style allows you to configure OTTL statements as a list,
-without worrying about extra configurations.
-
-**This is the simplest way to configure the Transform Processor.** If you need global conditions or specific error modes see [Statement Group Config](#statement-group-config).
+Configuring statements can be done by either simply listing all statements together or using a more detailed and [advanced configuration](#advanced-configuration).
+Listing all statements together is the simplest way to configure the Transform Processor and is best suited for scenarios where simplicity and ease of use are paramount, 
+allowing you to quickly set up your statements with minimal effort.
 
 Format:
 
 ```yaml
-transform:
-  error_mode: ignore
   <trace|metric|log>_statements:
     - string
     - string
@@ -110,19 +104,14 @@ transform:
 
 If you're interested in how OTTL parses these statements, see [Context Inference](#context-inference).
 
-### Advanced Config
+#### Advanced Configuration
 
-> [!NOTE]
-> If you don't know how to write OTTL statements yet, first see OTTL's [Getting Started](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/pkg/ottl/README.md#getting-started) docs.
-
-For more complex use cases you may need to use the Transform Processor's
-advanced configuration style to group related OTTL statements.
+The advanced configuration is more detailed and allows the use of additional configuration keys such as `error_mode` and global `conditions`, 
+making it a better choice for complex scenarios.
 
 Format:
 
 ```yaml
-transform:
-  error_mode: ignore
   <trace|metric|log>_statements:
     - context: string
       error_mode: propagate
@@ -141,7 +130,7 @@ transform:
         - string
 ```
 
-`error_mode`: allows overriding the top-level `error_mode`. See [General Config](#general-config) for details on how to configure `error_mode`.
+`error_mode`: allows overriding the top-level `error_mode`. See [Config](#config) for details on how to configure `error_mode`.
 
 `conditions`: a list comprised of multiple where clauses, which will be processed as global conditions for the accompanying set of statements. The conditions are ORed together, which means only one condition needs to evaluate to true in order for the statements (including their individual Where clauses) to be executed.
 
@@ -181,7 +170,7 @@ function. Since `convert_sum_to_gauge` can only be used with the metrics, not da
 statements contains a reference to the datapoints via the `datapoint` Path prefix, the group of statements cannot
 be parsed.
 
-The solution is to separate the statements into separate groups:
+The solution is to separate the statements into different groups:
 
 ```yaml
 metric_statements:
@@ -191,7 +180,7 @@ metric_statements:
     - convert_sum_to_gauge() where metric.name == "system.processes.count" 
 ```
 
-Alternatively, for simplicity, you can use the [basic configuration](#basic-config) style:
+Alternatively, for simplicity, you can configure the above statements as a list:
 
 ```yaml
 metric_statements:
