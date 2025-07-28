@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/iancoleman/strcase"
+	"go.opentelemetry.io/collector/pdata/pcommon"
 )
 
 // PathExpressionParser is how a context provides OTTL access to all its Paths.
@@ -419,6 +420,34 @@ func (p *Parser[K]) buildArgs(ed editor, argsVal reflect.Value) error {
 				return fmt.Errorf("undefined function %s", name)
 			}
 			val = StandardFunctionGetter[K]{FCtx: FunctionContext{Set: p.telemetrySettings}, Fact: f}
+		case strings.HasPrefix(fieldType.Name(), "SliceGetter"):
+			var fieldVal typedValueWrapper
+			if isOptional {
+				fieldVal, ok = optionalFieldRef.getRawValue().(typedValueWrapper)
+			} else {
+				fieldVal, ok = field.Addr().Interface().(typedValueWrapper)
+			}
+			if !ok {
+				return errors.New("SliceGetter is not a typedValueWrapper. This is a bug in the OTTL")
+			}
+
+			get, err := createStandardSliceGetter[K](
+				arg.Value,
+				fieldVal.getWrappedType(),
+				p.buildSliceArg,
+				p.buildStandardGetterSetter,
+				p.newGetter,
+			)
+			if err != nil {
+				return err
+			}
+
+			err = fieldVal.setWrappedValue(reflect.ValueOf(get))
+			if err != nil {
+				return err
+			}
+			val = reflect.ValueOf(fieldVal).Elem().Interface()
+
 		case strings.HasPrefix(fieldType.Name(), "LiteralGetter"):
 			var fieldVal typedValueWrapper
 			if isOptional {
@@ -575,110 +604,52 @@ func (p *Parser[K]) buildGetSetterFromPath(path *path) (GetSetter[K], error) {
 	return arg, nil
 }
 
+func (p *Parser[K]) buildStandardGetterSetter(name string, getter Getter[K]) (any, error) {
+	switch {
+	case strings.HasPrefix(name, "Setter"),
+		strings.HasPrefix(name, "GetSetter"),
+		strings.HasPrefix(name, "Getter"):
+		return getter, nil
+	case strings.HasPrefix(name, "StringGetter"):
+		return newStandardStringGetter(getter), nil
+	case strings.HasPrefix(name, "StringLikeGetter"):
+		return newStandardStringLikeGetter[K](getter), nil
+	case strings.HasPrefix(name, "FloatGetter"):
+		return newStandardFloatGetter(getter), nil
+	case strings.HasPrefix(name, "FloatLikeGetter"):
+		return newStandardFloatLikeGetter(getter), nil
+	case strings.HasPrefix(name, "IntGetter"):
+		return newStandardIntGetter(getter), nil
+	case strings.HasPrefix(name, "IntLikeGetter"):
+		return newStandardIntLikeGetter(getter), nil
+	case strings.HasPrefix(name, "PMapGetSetter"):
+		stdMapGetter := StandardPMapGetter[K]{Getter: getter.Get}
+		if setter, ok := getter.(Setter[K]); ok {
+			return StandardPMapGetSetter[K]{Getter: stdMapGetter.Get, Setter: setter.Set}, nil
+		}
+		return nil, fmt.Errorf("type %q is not a setter and cannot be used as PMapGetSetter", name)
+	case strings.HasPrefix(name, "PMapGetter"):
+		return newStandardPMapGetter(getter), nil
+	case strings.HasPrefix(name, "PSliceGetter"):
+		return newStandardPSliceGetter(getter), nil
+	case strings.HasPrefix(name, "DurationGetter"):
+		return newStandardDurationGetter(getter), nil
+	case strings.HasPrefix(name, "TimeGetter"):
+		return newStandardTimeGetter(getter), nil
+	case strings.HasPrefix(name, "BoolGetter"):
+		return newStandardBoolGetter(getter), nil
+	case strings.HasPrefix(name, "BoolLikeGetter"):
+		return newStandardBoolLikeGetter(getter), nil
+	case strings.HasPrefix(name, "ByteSliceLikeGetter"):
+		return newStandardByteSliceLikeGetter(getter), nil
+	}
+	return nil, fmt.Errorf("unsupported argument type: %s", name)
+}
+
 // Handle interfaces that can be passed as arguments to OTTL functions.
 func (p *Parser[K]) buildArg(argVal value, argType reflect.Type) (any, error) {
 	name := argType.Name()
 	switch {
-	case strings.HasPrefix(name, "Setter"),
-		strings.HasPrefix(name, "GetSetter"):
-		if argVal.Literal != nil && argVal.Literal.Path != nil {
-			return p.buildGetSetterFromPath(argVal.Literal.Path)
-		}
-		return nil, errors.New("must be a path")
-	case strings.HasPrefix(name, "Getter"):
-		arg, err := p.newGetter(argVal)
-		if err != nil {
-			return nil, err
-		}
-		return arg, nil
-	case strings.HasPrefix(name, "StringGetter"):
-		arg, err := p.newGetter(argVal)
-		if err != nil {
-			return nil, err
-		}
-		return newStandardStringGetter(arg), nil
-	case strings.HasPrefix(name, "StringLikeGetter"):
-		arg, err := p.newGetter(argVal)
-		if err != nil {
-			return nil, err
-		}
-		return newStandardStringLikeGetter[K](arg), nil
-	case strings.HasPrefix(name, "FloatGetter"):
-		arg, err := p.newGetter(argVal)
-		if err != nil {
-			return nil, err
-		}
-		return newStandardFloatGetter(arg), nil
-	case strings.HasPrefix(name, "FloatLikeGetter"):
-		arg, err := p.newGetter(argVal)
-		if err != nil {
-			return nil, err
-		}
-		return newStandardFloatLikeGetter(arg), nil
-	case strings.HasPrefix(name, "IntGetter"):
-		arg, err := p.newGetter(argVal)
-		if err != nil {
-			return nil, err
-		}
-		return newStandardIntGetter(arg), nil
-	case strings.HasPrefix(name, "IntLikeGetter"):
-		arg, err := p.newGetter(argVal)
-		if err != nil {
-			return nil, err
-		}
-		return newStandardIntLikeGetter(arg), nil
-	case strings.HasPrefix(name, "PMapGetSetter"):
-		if argVal.Literal == nil || argVal.Literal.Path == nil {
-			return nil, errors.New("must be a path")
-		}
-		pathGetSetter, err := p.buildGetSetterFromPath(argVal.Literal.Path)
-		if err != nil {
-			return nil, err
-		}
-		stdMapGetter := StandardPMapGetter[K]{Getter: pathGetSetter.Get}
-		return StandardPMapGetSetter[K]{Getter: stdMapGetter.Get, Setter: pathGetSetter.Set}, nil
-	case strings.HasPrefix(name, "PMapGetter"):
-		arg, err := p.newGetter(argVal)
-		if err != nil {
-			return nil, err
-		}
-		return newStandardPMapGetter(arg), nil
-	case strings.HasPrefix(name, "PSliceGetter"):
-		arg, err := p.newGetter(argVal)
-		if err != nil {
-			return nil, err
-		}
-		return newStandardPSliceGetter(arg), nil
-	case strings.HasPrefix(name, "DurationGetter"):
-		arg, err := p.newGetter(argVal)
-		if err != nil {
-			return nil, err
-		}
-		return newStandardDurationGetter(arg), nil
-	case strings.HasPrefix(name, "TimeGetter"):
-		arg, err := p.newGetter(argVal)
-		if err != nil {
-			return nil, err
-		}
-		return newStandardTimeGetter(arg), nil
-	case strings.HasPrefix(name, "BoolGetter"):
-		arg, err := p.newGetter(argVal)
-		if err != nil {
-			return nil, err
-		}
-		return newStandardBoolGetter(arg), nil
-	case strings.HasPrefix(name, "BoolLikeGetter"):
-		arg, err := p.newGetter(argVal)
-		if err != nil {
-			return nil, err
-		}
-		return newStandardBoolLikeGetter(arg), nil
-	case strings.HasPrefix(name, "ByteSliceLikeGetter"):
-		arg, err := p.newGetter(argVal)
-		if err != nil {
-			return nil, err
-		}
-		return newStandardByteSliceLikeGetter(arg), nil
 	case name == "Enum":
 		arg, err := p.enumParser((*EnumSymbol)(argVal.Enum))
 		if err != nil {
@@ -705,19 +676,38 @@ func (p *Parser[K]) buildArg(argVal value, argType reflect.Type) (any, error) {
 			return nil, errors.New("must be a bool")
 		}
 		return bool(*argVal.Bool), nil
+	case strings.HasPrefix(name, "Setter"),
+		strings.HasPrefix(name, "GetSetter"),
+		strings.HasPrefix(name, "PMapGetSetter"):
+		if argVal.Literal == nil || argVal.Literal.Path == nil {
+			return nil, errors.New("must be a path")
+		}
+		gs, err := p.buildGetSetterFromPath(argVal.Literal.Path)
+		if err != nil {
+			return nil, err
+		}
+		return p.buildStandardGetterSetter(name, gs)
 	default:
-		return nil, fmt.Errorf("unsupported argument type: %s", name)
+		arg, err := p.newGetter(argVal)
+		if err != nil {
+			return nil, err
+		}
+		gs, err := p.buildStandardGetterSetter(name, arg)
+		if err != nil {
+			return nil, err
+		}
+		return gs, nil
 	}
 }
 
 type buildArgFunc func(value, reflect.Type) (any, error)
 
-func buildSlice[T any](argVal value, argType reflect.Type, buildArg buildArgFunc, name string) (any, error) {
+func buildSlice[T any](argVal value, argType reflect.Type, buildArg buildArgFunc, name string) ([]T, error) {
 	if argVal.List == nil {
 		return nil, fmt.Errorf("must be a list of type %v", name)
 	}
 
-	vals := []T{}
+	vals := make([]T, 0, len(argVal.List.Values))
 	values := argVal.List.Values
 	for j := 0; j < len(values); j++ {
 		untypedVal, err := buildArg(values[j], argType.Elem())
@@ -893,4 +883,182 @@ func NewTestingLiteralGetter[K, V any, G typedGetter[K, V]](literal bool, getter
 		literal:     literal,
 	}
 	return LiteralGetter[K, V, G]{getter: any(mockedGetter).(G)}
+}
+
+// Ensure SliceGetter implements typedValueWrapper.
+var _ typedValueWrapper = (*SliceGetter[any, any])(nil)
+
+type SliceGetter[K, T any] struct {
+	literal bool
+	getter  Getter[K]
+}
+
+func (s *SliceGetter[K, T]) isLiteral() bool {
+	lg, ok := s.getter.(literalGetter)
+	return ok && lg.isLiteral()
+}
+
+func (s *SliceGetter[K, T]) getLiteral() (any, error) {
+	if !s.literal {
+		return nil, errors.New("SliceGetter value is not a literal")
+	}
+	return s.Get(context.Background(), *new(K))
+}
+
+func (*SliceGetter[K, T]) getWrappedType() reflect.Type {
+	return reflect.TypeFor[T]()
+}
+
+func (s *SliceGetter[K, T]) getRawValue() any {
+	return s.getter
+}
+
+func (s *SliceGetter[K, T]) setWrappedValue(val reflect.Value) error {
+	if typedVal, ok := val.Interface().(Getter[K]); ok {
+		s.getter = typedVal
+		return nil
+	}
+	return fmt.Errorf("cannot set value of type %s to a SliceGetter of type %s", val.Type(), reflect.TypeFor[T]())
+}
+
+func (s *SliceGetter[K, T]) Get(ctx context.Context, tCtx K) ([]T, error) {
+	val, err := s.getter.Get(ctx, tCtx)
+	if err != nil {
+		return nil, err
+	}
+	if ts, ok := val.([]T); ok {
+		return ts, nil
+	}
+
+	sliceVals, ok := val.([]any)
+	if !ok {
+		return nil, fmt.Errorf("invalid slice value; expected a slice of %s, got %T", reflect.TypeFor[T](), val)
+	}
+
+	res := make([]T, 0, len(sliceVals))
+	for _, v := range sliceVals {
+		vt, ok := v.(T)
+		if !ok {
+			return nil, fmt.Errorf("invalid slice item type: %T, expected %s", v, reflect.TypeFor[T]())
+		}
+		res = append(res, vt)
+	}
+	return res, nil
+}
+
+type standardGetter[K any] struct {
+	getter  func(ctx context.Context, tCtx K) (any, error)
+	literal bool
+}
+
+func (s standardGetter[K]) Get(ctx context.Context, tCtx K) (any, error) {
+	return s.getter(ctx, tCtx)
+}
+
+func (s standardGetter[K]) isLiteral() bool {
+	return s.literal
+}
+
+func (s standardGetter[K]) getLiteral() (any, error) {
+	return s.Get(context.Background(), *new(K))
+}
+
+func createStandardSliceGetter[K any](
+	argVal value,
+	sliceItemType reflect.Type,
+	buildSliceArg func(value, reflect.Type) (any, error),
+	buildSliceItemGetter func(string, Getter[K]) (any, error),
+	buildGetter func(value) (Getter[K], error),
+) (Getter[K], error) {
+	var valueGetter func(context.Context, K) (any, error)
+	var isLiteral bool
+
+	switch sliceItemType.Kind() {
+	case reflect.String, reflect.Uint8, reflect.Float64, reflect.Int64:
+		isLiteral = true
+	default:
+		isLiteral = false
+	}
+
+	if argVal.List != nil {
+		slice, err := buildSliceArg(argVal, reflect.SliceOf(sliceItemType))
+		if err != nil {
+			return nil, err
+		}
+
+		sliceValue := reflect.ValueOf(slice)
+		if !isLiteral && sliceValue.Kind() == reflect.Slice && sliceValue.Len() > 0 {
+			allLiterals := true
+			for i := 0; i < sliceValue.Len(); i++ {
+				rawVal := sliceValue.Index(i).Interface()
+				if litGetter, ok := rawVal.(literalGetter); !ok || !litGetter.isLiteral() {
+					allLiterals = false
+					break
+				}
+			}
+			isLiteral = allLiterals
+		}
+
+		valueGetter = func(context.Context, K) (any, error) { return slice, nil }
+	} else {
+		argValGetter, err := buildGetter(argVal)
+		if err != nil {
+			return nil, err
+		}
+		if litGetter, ok := argValGetter.(literalGetter); ok && litGetter.isLiteral() {
+			isLiteral = true
+			litValues, err := litGetter.getLiteral()
+			if err != nil {
+				return nil, err
+			}
+			valueGetter = func(context.Context, K) (any, error) { return litValues, nil }
+		} else {
+			isLiteral = false
+			valueGetter = argValGetter.Get
+		}
+	}
+
+	return standardGetter[K]{
+		literal: isLiteral,
+		getter: func(ctx context.Context, tCtx K) (any, error) {
+			var res []any
+			values, err := valueGetter(ctx, tCtx)
+			if err != nil {
+				return nil, err
+			}
+
+			switch typedVal := values.(type) {
+			case pcommon.Slice:
+				values = typedVal.AsRaw()
+			case pcommon.Value:
+				if typedVal.Type() != pcommon.ValueTypeSlice {
+					return nil, fmt.Errorf("expected a slice, got %q", typedVal.Type())
+				}
+				values = typedVal.Slice().AsRaw()
+			default:
+				valuesType := reflect.TypeOf(values)
+				if valuesType == reflect.SliceOf(sliceItemType) {
+					return values, nil
+				}
+				if valuesType.Kind() != reflect.Slice {
+					return nil, fmt.Errorf("expected a slice, got %q", reflect.TypeOf(values).Kind())
+				}
+			}
+
+			sliceValue := reflect.ValueOf(values)
+			for i := 0; i < sliceValue.Len(); i++ {
+				rawVal := sliceValue.Index(i)
+				if rawVal.Type() == sliceItemType {
+					res = append(res, rawVal.Interface())
+				} else {
+					itemGetter, err := buildSliceItemGetter(sliceItemType.Name(), literal[K]{value: rawVal.Interface()})
+					if err != nil {
+						return nil, err
+					}
+					res = append(res, itemGetter)
+				}
+			}
+			return res, nil
+		},
+	}, nil
 }
