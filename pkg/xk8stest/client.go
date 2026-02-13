@@ -10,6 +10,7 @@ import (
 	"k8s.io/client-go/discovery"
 	memory "k8s.io/client-go/discovery/cached"
 	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/restmapper"
 	"k8s.io/client-go/tools/clientcmd"
 )
@@ -18,6 +19,7 @@ type K8sClient struct {
 	DynamicClient   *dynamic.DynamicClient
 	DiscoveryClient *discovery.DiscoveryClient
 	Mapper          *restmapper.DeferredDiscoveryRESTMapper
+	KubeClient      *kubernetes.Clientset
 }
 
 func NewK8sClient(kubeconfigPath string) (*K8sClient, error) {
@@ -39,8 +41,16 @@ func NewK8sClient(kubeconfigPath string) (*K8sClient, error) {
 		return nil, fmt.Errorf("error creating discovery client: %w", err)
 	}
 
+	kubeClient, err := kubernetes.NewForConfig(restConfig)
+	if err != nil {
+		return nil, fmt.Errorf("error creating kubernetes client: %w", err)
+	}
+
 	mapper := restmapper.NewDeferredDiscoveryRESTMapper(memory.NewMemCacheClient(discoveryClient))
 	return &K8sClient{
-		DynamicClient: dynamicClient, DiscoveryClient: discoveryClient, Mapper: mapper,
+		DynamicClient:   dynamicClient,
+		DiscoveryClient: discoveryClient,
+		Mapper:          mapper,
+		KubeClient:      kubeClient,
 	}, nil
 }

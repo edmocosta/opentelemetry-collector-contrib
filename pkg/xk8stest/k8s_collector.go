@@ -5,6 +5,8 @@ package xk8stest // import "github.com/open-telemetry/opentelemetry-collector-co
 
 import (
 	"bytes"
+	"fmt"
+	"io"
 	"maps"
 	"os"
 	"path/filepath"
@@ -81,6 +83,7 @@ func WaitForCollectorToStart(t *testing.T, client *K8sClient, podNamespace strin
 			podReady := false
 			if pod.Status.Phase != v1.PodRunning {
 				t.Logf("pod %v is not running, current phase: %v", pod.Name, pod.Status.Phase)
+				printPodLogsForDebug(t, client, podNamespace, pod)
 				continue
 			}
 			for _, cond := range pod.Status.Conditions {
@@ -91,6 +94,7 @@ func WaitForCollectorToStart(t *testing.T, client *K8sClient, podNamespace strin
 			}
 			// Add some debug logs for crashing pods
 			if !podReady {
+				t.Logf("pod %s not ready; phase=%s", pod.Name, pod.Status.Phase)
 				for i := range pod.Status.ContainerStatuses {
 					cs := &pod.Status.ContainerStatuses[i]
 					restartCount := cs.RestartCount
@@ -99,6 +103,7 @@ func WaitForCollectorToStart(t *testing.T, client *K8sClient, podNamespace strin
 						t.Logf("termination message: %s", cs.LastTerminationState.Terminated.Message)
 					}
 				}
+				printPodLogsForDebug(t, client, podNamespace, pod)
 			}
 		}
 		if podsNotReady == 0 {
@@ -108,4 +113,59 @@ func WaitForCollectorToStart(t *testing.T, client *K8sClient, podNamespace strin
 		return false
 	}, time.Duration(podTimeoutMinutes)*time.Minute, 2*time.Second,
 		"collector pods were not ready within %d minutes", podTimeoutMinutes)
+}
+
+func printPodLogsForDebug(t *testing.T, client *K8sClient, namespace string, pod *v1.Pod) {
+	if client == nil || client.KubeClient == nil {
+		return
+	}
+	if pod == nil || pod.Name == "" {
+		return
+	}
+
+	// Keep this small-ish to avoid spamming CI logs.
+	const tailLines int64 = 200
+	containers := make([]string, 0, len(pod.Spec.Containers))
+	for i := range pod.Spec.Containers {
+		containers = append(containers, pod.Spec.Containers[i].Name)
+	}
+	if len(containers) == 0 {
+		// Fallback: some pod objects might not have spec in edge cases; still try without container name.
+		containers = append(containers, "")
+	}
+
+	for _, container := range containers {
+		containerLabel := container
+		if containerLabel == "" {
+			containerLabel = "<default>"
+		}
+
+		for _, previous := range []bool{false, true} {
+			opts := &v1.PodLogOptions{
+				Container: container,
+				Previous:  previous,
+				TailLines: func() *int64 { v := tailLines; return &v }(),
+			}
+
+			req := client.KubeClient.CoreV1().Pods(namespace).GetLogs(pod.Name, opts)
+			stream, err := req.Stream(t.Context())
+			if err != nil {
+				// Not all pods/containers have logs yet (or previous logs), so keep it informational.
+				t.Logf("pod %s container %s previous=%t: unable to stream logs: %v", pod.Name, containerLabel, previous, err)
+				continue
+			}
+			data, readErr := io.ReadAll(stream)
+			_ = stream.Close()
+			if readErr != nil {
+				t.Logf("pod %s container %s previous=%t: unable to read logs: %v", pod.Name, containerLabel, previous, readErr)
+				continue
+			}
+			if len(bytes.TrimSpace(data)) == 0 {
+				continue
+			}
+
+			head := fmt.Sprintf("---- logs pod=%s container=%s previous=%t (tail=%d) ----\n", pod.Name, containerLabel, previous, tailLines)
+			t.Logf("%s%s", head, string(data))
+		}
+	}
 }
