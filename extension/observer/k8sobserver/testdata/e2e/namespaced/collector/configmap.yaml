@@ -7,9 +7,7 @@ data:
   relay: |
     exporters:
       otlp_grpc:
-        # HostEndpoint may be an IPv6 literal (e.g. kind gateway). In that case we must
-        # format host:port using brackets: [ipv6]:port, otherwise gRPC config parsing fails.
-        endpoint: {{ if (contains ":" .HostEndpoint) }}[{{ .HostEndpoint }}]{{ else }}{{ .HostEndpoint }}{{ end }}:4317
+        endpoint: {{ joinHostPort .HostEndpoint 4317 }}
         tls:
           insecure: true
     extensions:
