@@ -345,7 +345,7 @@ func (p *Parser[K]) newFunctionCall(ed editor) (Expr[K], error) {
 		return Expr[K]{}, fmt.Errorf("couldn't create function: %w", err)
 	}
 
-	return Expr[K]{exprFunc: fn}, err
+	return Expr[K]{exprFunc: fn, exprDesc: f.Name()}, err
 }
 
 func (p *Parser[K]) buildArgs(ed editor, argsVal reflect.Value) error {

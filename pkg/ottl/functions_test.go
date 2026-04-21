@@ -1892,6 +1892,14 @@ func Test_NewFunctionCall(t *testing.T) {
 			},
 			want: nil,
 		},
+		{
+			name: "function that panics",
+			inv: editor{
+				Function:  "testing_panic",
+				Arguments: []argument{},
+			},
+			wantError: `panic while evaluating OTTL expression ("testing_panic"): function has panicked`,
+		},
 	}
 
 	p, _ := NewParser(
@@ -2382,6 +2390,12 @@ func functionWithBool(bool) (ExprFunc[any], error) {
 	}, nil
 }
 
+func functionThatPanics() (ExprFunc[any], error) {
+	return func(context.Context, any) (any, error) {
+		panic("function has panicked")
+	}, nil
+}
+
 type multipleArgsArguments struct {
 	GetSetterArg GetSetter[any]
 	StringArg    string
@@ -2682,6 +2696,11 @@ func defaultFunctionsForTests() map[string]Factory[any] {
 			"testing_enum",
 			&enumArguments{},
 			functionWithEnum,
+		),
+		createFactory(
+			"testing_panic",
+			&struct{}{},
+			functionThatPanics,
 		),
 	)
 }

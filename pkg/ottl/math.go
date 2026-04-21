@@ -88,6 +88,7 @@ func (p *Parser[K]) evaluateMathValue(val *mathValue) (Getter[K], error) {
 func negateGetter[K any](baseGetter Getter[K]) Getter[K] {
 	return &exprGetter[K]{
 		expr: Expr[K]{
+			exprDesc: "math:unary-minus",
 			exprFunc: func(ctx context.Context, tCtx K) (any, error) {
 				x, err := baseGetter.Get(ctx, tCtx)
 				if err != nil {
@@ -109,6 +110,7 @@ func negateGetter[K any](baseGetter Getter[K]) Getter[K] {
 func attemptMathOperation[K any](lhs Getter[K], op mathOp, rhs Getter[K]) Getter[K] {
 	return &exprGetter[K]{
 		expr: Expr[K]{
+			exprDesc: fmt.Sprintf("math:%s", op.String()),
 			exprFunc: func(ctx context.Context, tCtx K) (any, error) {
 				x, err := lhs.Get(ctx, tCtx)
 				if err != nil {

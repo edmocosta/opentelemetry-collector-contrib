@@ -27,10 +27,17 @@ type ExprFunc[K any] func(ctx context.Context, tCtx K) (any, error)
 // Expr is a struct that represents a function
 type Expr[K any] struct {
 	exprFunc ExprFunc[K]
+	exprDesc string
 }
 
 // Eval invokes the OTTL function
-func (e Expr[K]) Eval(ctx context.Context, tCtx K) (any, error) {
+func (e Expr[K]) Eval(ctx context.Context, tCtx K) (res any, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			res = nil
+			err = fmt.Errorf("panic while evaluating OTTL expression (%q): %v", e.exprDesc, r)
+		}
+	}()
 	return e.exprFunc(ctx, tCtx)
 }
 
@@ -621,7 +628,7 @@ func (g StandardFunctionGetter[K]) Get(args Arguments) (Expr[K], error) {
 	if err != nil {
 		return Expr[K]{}, fmt.Errorf("couldn't create function: %w", err)
 	}
-	return Expr[K]{exprFunc: fn}, nil
+	return Expr[K]{exprFunc: fn, exprDesc: g.Fact.Name()}, nil
 }
 
 // PMapGetSetter is a GetSetter that must interact with a pcommon.Map
