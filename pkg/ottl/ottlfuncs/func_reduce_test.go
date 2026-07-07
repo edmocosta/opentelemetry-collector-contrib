@@ -114,11 +114,12 @@ func Test_reduce(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			seed := tt.seed
-			exprFunc := reduce(tt.source, ottl.StandardGetSetter[any]{
+			exprFunc, err := reduce(tt.source, ottl.StandardGetSetter[any]{
 				Getter: func(_ context.Context, _ any) (any, error) {
 					return seed, nil
 				},
 			}, tt.accumulator)
+			require.NoError(t, err)
 			got, err := exprFunc(t.Context(), nil)
 			require.NoError(t, err)
 			assert.Equal(t, tt.want, got)
@@ -138,7 +139,7 @@ func Test_reduce_error(t *testing.T) {
 	})
 
 	t.Run("unsupported source type", func(t *testing.T) {
-		exprFunc := reduce(
+		exprFunc, err := reduce(
 			ottl.StandardGetSetter[any]{
 				Getter: func(_ context.Context, _ any) (any, error) {
 					return "not a collection", nil
@@ -147,14 +148,15 @@ func Test_reduce_error(t *testing.T) {
 			seed,
 			accumulator,
 		)
-		_, err := exprFunc(t.Context(), nil)
+		require.NoError(t, err)
+		_, err = exprFunc(t.Context(), nil)
 		require.Error(t, err)
 		assert.ErrorContains(t, err, "unsupported type")
 	})
 
 	t.Run("seed getter error", func(t *testing.T) {
 		seedErr := errors.New("seed failed")
-		exprFunc := reduce(
+		exprFunc, err := reduce(
 			ottl.StandardGetSetter[any]{
 				Getter: func(_ context.Context, _ any) (any, error) {
 					s := pcommon.NewSlice()
@@ -169,7 +171,8 @@ func Test_reduce_error(t *testing.T) {
 			},
 			accumulator,
 		)
-		_, err := exprFunc(t.Context(), nil)
+		require.NoError(t, err)
+		_, err = exprFunc(t.Context(), nil)
 		require.ErrorIs(t, err, seedErr)
 	})
 
@@ -185,8 +188,9 @@ func Test_reduce_error(t *testing.T) {
 			return nil, errors.New("accumulator failed")
 		})
 
-		exprFunc := reduce(source, seed, failingAccumulator)
-		_, err := exprFunc(t.Context(), nil)
+		exprFunc, err := reduce(source, seed, failingAccumulator)
+		require.NoError(t, err)
+		_, err = exprFunc(t.Context(), nil)
 		require.Error(t, err)
 		assert.ErrorContains(t, err, "error while evaluating accumulator function on map item (a,")
 		assert.ErrorContains(t, err, "accumulator failed")
@@ -204,8 +208,9 @@ func Test_reduce_error(t *testing.T) {
 			return nil, errors.New("accumulator failed")
 		})
 
-		exprFunc := reduce(source, seed, failingAccumulator)
-		_, err := exprFunc(t.Context(), nil)
+		exprFunc, err := reduce(source, seed, failingAccumulator)
+		require.NoError(t, err)
+		_, err = exprFunc(t.Context(), nil)
 		require.Error(t, err)
 		assert.ErrorContains(t, err, "error while evaluating accumulator function on slice item (0,")
 		assert.ErrorContains(t, err, "accumulator failed")

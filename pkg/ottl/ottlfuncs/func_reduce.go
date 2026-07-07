@@ -30,10 +30,15 @@ func createReduceFunction[K any](_ ottl.FunctionContext, oArgs ottl.Arguments) (
 	if !ok {
 		return nil, errors.New("ReduceFactory args must be of type *ReduceArguments[K]")
 	}
-	return reduce(args.Source, args.Seed, args.Accumulator), nil
+	return reduce(args.Source, args.Seed, args.Accumulator)
 }
 
-func reduce[K any](source, seed ottl.Getter[K], accumulator *ottl.LambdaExpression[K]) ottl.ExprFunc[K] {
+func reduce[K any](source, seed ottl.Getter[K], accumulator *ottl.LambdaExpression[K]) (ottl.ExprFunc[K], error) {
+	err := accumulator.ValidateArity(3)
+	if err != nil {
+		return nil, err
+	}
+
 	return func(ctx context.Context, tCtx K) (any, error) {
 		sourceVal, err := funcutil.GetSliceOrMapValue(ctx, tCtx, source)
 		if err != nil {
@@ -45,7 +50,7 @@ func reduce[K any](source, seed ottl.Getter[K], accumulator *ottl.LambdaExpressi
 			return nil, err
 		}
 
-		lb, err := accumulator.Activate(ctx, 3)
+		lb, err := accumulator.Activate(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -59,7 +64,7 @@ func reduce[K any](source, seed ottl.Getter[K], accumulator *ottl.LambdaExpressi
 		default:
 			return nil, fmt.Errorf("unsupported type: %T", typedVal)
 		}
-	}
+	}, nil
 }
 
 func reduceMapValues[K any](tCtx K, source pcommon.Map, lb *ottl.LambdaActivation[K], seedVal any) (any, error) {
