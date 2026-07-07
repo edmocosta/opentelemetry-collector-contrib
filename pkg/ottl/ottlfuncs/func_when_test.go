@@ -80,7 +80,8 @@ func Test_when(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			exprFunc := whenFunction(tt.condition, tt.trueValue, tt.falseValue)
+			exprFunc, err := whenFunction(tt.condition, tt.trueValue, tt.falseValue)
+			require.NoError(t, err)
 			got, err := exprFunc(t.Context(), nil)
 			require.NoError(t, err)
 			assert.Equal(t, tt.want, got)
@@ -99,7 +100,8 @@ func Test_when_unused_branch(t *testing.T) {
 		return nil, errors.New("should not be reached")
 	}}
 
-	exprFunc := whenFunction(condition, trueValue, falseValue)
+	exprFunc, err := whenFunction(condition, trueValue, falseValue)
+	require.NoError(t, err)
 	got, err := exprFunc(t.Context(), nil)
 	require.NoError(t, err)
 	assert.Equal(t, "true", got)
@@ -118,8 +120,9 @@ func Test_when_error(t *testing.T) {
 			return "not a bool", nil
 		})
 
-		exprFunc := whenFunction(condition, trueValue, falseValue)
-		_, err := exprFunc(t.Context(), nil)
+		exprFunc, err := whenFunction(condition, trueValue, falseValue)
+		require.NoError(t, err)
+		_, err = exprFunc(t.Context(), nil)
 		require.Error(t, err)
 		assert.ErrorContains(t, err, "error while evaluating lambda function")
 		assert.ErrorContains(t, err, "lambda expression must return a value of type bool")
@@ -130,8 +133,9 @@ func Test_when_error(t *testing.T) {
 			return nil, errors.New("eval failed")
 		})
 
-		exprFunc := whenFunction(condition, trueValue, falseValue)
-		_, err := exprFunc(t.Context(), nil)
+		exprFunc, err := whenFunction(condition, trueValue, falseValue)
+		require.NoError(t, err)
+		_, err = exprFunc(t.Context(), nil)
 		require.Error(t, err)
 		assert.ErrorContains(t, err, "error while evaluating lambda function")
 		assert.ErrorContains(t, err, "eval failed")

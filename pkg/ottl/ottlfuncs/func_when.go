@@ -27,10 +27,15 @@ func createWhenFunction[K any](_ ottl.FunctionContext, oArgs ottl.Arguments) (ot
 	if !ok {
 		return nil, errors.New("WhenFactory args must be of type *WhenArguments[K]")
 	}
-	return whenFunction(args.Condition, args.TrueValue, args.FalseValue), nil
+	return whenFunction(args.Condition, args.TrueValue, args.FalseValue)
 }
 
-func whenFunction[K any](condition *ottl.LambdaExpression[K], trueValueGetter, falseValueGetter ottl.Getter[K]) ottl.ExprFunc[K] {
+func whenFunction[K any](condition *ottl.LambdaExpression[K], trueValueGetter, falseValueGetter ottl.Getter[K]) (ottl.ExprFunc[K], error) {
+	err := condition.ValidateArity(0)
+	if err != nil {
+		return nil, err
+	}
+
 	var trueValue any
 	var falseValue any
 	if tv, ok := ottl.GetLiteralValue(trueValueGetter); ok {
@@ -41,7 +46,7 @@ func whenFunction[K any](condition *ottl.LambdaExpression[K], trueValueGetter, f
 	}
 
 	return func(ctx context.Context, tCtx K) (any, error) {
-		lb, err := condition.Activate(ctx, 0)
+		lb, err := condition.Activate(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -64,5 +69,5 @@ func whenFunction[K any](condition *ottl.LambdaExpression[K], trueValueGetter, f
 		}
 
 		return falseValueGetter.Get(ctx, tCtx)
-	}
+	}, nil
 }
