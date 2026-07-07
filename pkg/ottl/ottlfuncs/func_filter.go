@@ -29,17 +29,22 @@ func createFilterFunction[K any](_ ottl.FunctionContext, oArgs ottl.Arguments) (
 	if !ok {
 		return nil, errors.New("FilterFactory args must be of type *FilterArguments[K]")
 	}
-	return filter(args.Source, args.Predicate), nil
+	return filter(args.Source, args.Predicate)
 }
 
-func filter[K any](source ottl.Getter[K], predicate *ottl.LambdaExpression[K]) ottl.ExprFunc[K] {
+func filter[K any](source ottl.Getter[K], predicate *ottl.LambdaExpression[K]) (ottl.ExprFunc[K], error) {
+	err := predicate.ValidateArity(2)
+	if err != nil {
+		return nil, err
+	}
+
 	return func(ctx context.Context, tCtx K) (any, error) {
 		sourceVal, err := funcutil.GetSliceOrMapValue(ctx, tCtx, source)
 		if err != nil {
 			return nil, err
 		}
 
-		lb, err := predicate.Activate(ctx, 2)
+		lb, err := predicate.Activate(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -53,7 +58,7 @@ func filter[K any](source ottl.Getter[K], predicate *ottl.LambdaExpression[K]) o
 		default:
 			return nil, fmt.Errorf("unsupported type: %T", typedVal)
 		}
-	}
+	}, nil
 }
 
 func filterSliceValues[K any](tCtx K, source pcommon.Slice, lambda *ottl.LambdaActivation[K]) (pcommon.Slice, error) {

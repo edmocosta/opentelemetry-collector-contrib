@@ -104,7 +104,8 @@ func Test_filter(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			exprFunc := filter(tt.source, tt.predicate)
+			exprFunc, err := filter(tt.source, tt.predicate)
+			require.NoError(t, err)
 			got, err := exprFunc(t.Context(), nil)
 			require.NoError(t, err)
 
@@ -122,7 +123,7 @@ func Test_filter(t *testing.T) {
 
 func Test_filter_error(t *testing.T) {
 	t.Run("unsupported source type", func(t *testing.T) {
-		exprFunc := filter(
+		exprFunc, err := filter(
 			ottl.StandardGetSetter[any]{
 				Getter: func(_ context.Context, _ any) (any, error) {
 					return "not a collection", nil
@@ -132,7 +133,8 @@ func Test_filter_error(t *testing.T) {
 				return true, nil
 			}),
 		)
-		_, err := exprFunc(t.Context(), nil)
+		require.NoError(t, err)
+		_, err = exprFunc(t.Context(), nil)
 		require.Error(t, err)
 		assert.ErrorContains(t, err, "unsupported type")
 	})
@@ -149,8 +151,9 @@ func Test_filter_error(t *testing.T) {
 			return 123, nil
 		})
 
-		exprFunc := filter(source, predicate)
-		_, err := exprFunc(t.Context(), nil)
+		exprFunc, err := filter(source, predicate)
+		require.NoError(t, err)
+		_, err = exprFunc(t.Context(), nil)
 		require.Error(t, err)
 		assert.ErrorContains(t, err, "error while evaluating lambda function on map item (a,")
 		assert.ErrorContains(t, err, "lambda expression must return a value of type bool")
@@ -168,8 +171,9 @@ func Test_filter_error(t *testing.T) {
 			return 123, nil
 		})
 
-		exprFunc := filter(source, predicate)
-		_, err := exprFunc(t.Context(), nil)
+		exprFunc, err := filter(source, predicate)
+		require.NoError(t, err)
+		_, err = exprFunc(t.Context(), nil)
 		require.Error(t, err)
 		assert.ErrorContains(t, err, "error while evaluating lambda function on slice item (0,")
 		assert.ErrorContains(t, err, "lambda expression must return a value of type bool")
