@@ -30,17 +30,22 @@ func createMapEachFunction[K any](_ ottl.FunctionContext, oArgs ottl.Arguments) 
 	if !ok {
 		return nil, errors.New("MapEachFactory args must be of type *MapEachArguments[K]")
 	}
-	return mapEach(args.Source, args.Mapper), nil
+	return mapEach(args.Source, args.Mapper)
 }
 
-func mapEach[K any](source ottl.Getter[K], mapper *ottl.LambdaExpression[K]) ottl.ExprFunc[K] {
+func mapEach[K any](source ottl.Getter[K], mapper *ottl.LambdaExpression[K]) (ottl.ExprFunc[K], error) {
+	err := mapper.ValidateArity(2)
+	if err != nil {
+		return nil, err
+	}
+
 	return func(ctx context.Context, tCtx K) (any, error) {
 		sourceVal, err := funcutil.GetSliceOrMapValue(ctx, tCtx, source)
 		if err != nil {
 			return nil, err
 		}
 
-		lb, err := mapper.Activate(ctx, 2)
+		lb, err := mapper.Activate(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -54,7 +59,7 @@ func mapEach[K any](source ottl.Getter[K], mapper *ottl.LambdaExpression[K]) ott
 		default:
 			return nil, fmt.Errorf("unsupported type: %T", typedVal)
 		}
-	}
+	}, nil
 }
 
 func mapMapValues[K any](tCtx K, source pcommon.Map, lb *ottl.LambdaActivation[K]) (pcommon.Map, error) {

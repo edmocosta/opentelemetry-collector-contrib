@@ -212,7 +212,8 @@ func Test_mapEach(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			exprFunc := mapEach(tt.source, tt.mapper)
+			exprFunc, err := mapEach(tt.source, tt.mapper)
+			require.NoError(t, err)
 			got, err := exprFunc(t.Context(), nil)
 			require.NoError(t, err)
 
@@ -323,8 +324,9 @@ func Test_mapEach_errors(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			exprFunc := mapEach(tt.source, tt.mapper)
-			_, err := exprFunc(t.Context(), nil)
+			exprFunc, err := mapEach(tt.source, tt.mapper)
+			require.NoError(t, err)
+			_, err = exprFunc(t.Context(), nil)
 			require.Error(t, err)
 			for _, wantSubstr := range tt.wantErrorsWith {
 				assert.ErrorContains(t, err, wantSubstr)
