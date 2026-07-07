@@ -28,17 +28,22 @@ func createAnyFunction[K any](_ ottl.FunctionContext, oArgs ottl.Arguments) (ott
 	if !ok {
 		return nil, errors.New("AnyFactory args must be of type *AnyArguments[K]")
 	}
-	return anyMatch(args.Source, args.Predicate), nil
+	return anyMatch(args.Source, args.Predicate)
 }
 
-func anyMatch[K any](source ottl.Getter[K], predicate *ottl.LambdaExpression[K]) ottl.ExprFunc[K] {
+func anyMatch[K any](source ottl.Getter[K], predicate *ottl.LambdaExpression[K]) (ottl.ExprFunc[K], error) {
+	err := predicate.ValidateArity(2)
+	if err != nil {
+		return nil, err
+	}
+
 	return func(ctx context.Context, tCtx K) (any, error) {
 		sourceVal, err := funcutil.GetSliceOrMapValue(ctx, tCtx, source)
 		if err != nil {
 			return nil, err
 		}
 
-		lb, err := predicate.Activate(ctx, 2)
+		lb, err := predicate.Activate(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -52,7 +57,7 @@ func anyMatch[K any](source ottl.Getter[K], predicate *ottl.LambdaExpression[K])
 		default:
 			return nil, fmt.Errorf("unsupported type: %T", typedVal)
 		}
-	}
+	}, nil
 }
 
 func anySliceValueMatch[K any](tCtx K, source pcommon.Slice, lambda *ottl.LambdaActivation[K]) (bool, error) {

@@ -103,7 +103,8 @@ func Test_allMatch(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			exprFunc := allMatch(tt.source, tt.predicate)
+			exprFunc, err := allMatch(tt.source, tt.predicate)
+			require.NoError(t, err)
 			got, err := exprFunc(t.Context(), nil)
 			require.NoError(t, err)
 			assert.Equal(t, tt.want, got)
@@ -125,8 +126,9 @@ func Test_allMatch_eval_error(t *testing.T) {
 			},
 		}
 
-		exprFunc := allMatch(source, predicate)
-		_, err := exprFunc(t.Context(), nil)
+		exprFunc, err := allMatch(source, predicate)
+		require.NoError(t, err)
+		_, err = exprFunc(t.Context(), nil)
 		require.Error(t, err)
 		assert.ErrorContains(t, err, "error while evaluating lambda function on map item (a,")
 		assert.ErrorContains(t, err, "lambda expression must return a value of type bool")
@@ -141,8 +143,9 @@ func Test_allMatch_eval_error(t *testing.T) {
 			},
 		}
 
-		exprFunc := allMatch(source, predicate)
-		_, err := exprFunc(t.Context(), nil)
+		exprFunc, err := allMatch(source, predicate)
+		require.NoError(t, err)
+		_, err = exprFunc(t.Context(), nil)
 		require.Error(t, err)
 		assert.ErrorContains(t, err, "error while evaluating lambda function on slice item (0,")
 		assert.ErrorContains(t, err, "lambda expression must return a value of type bool")
