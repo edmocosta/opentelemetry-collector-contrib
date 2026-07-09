@@ -109,6 +109,25 @@ func Test_reduce(t *testing.T) {
 			}),
 			want: int64(42),
 		},
+		{
+			name: "reduce slice by index",
+			source: func() ottl.Getter[any] {
+				s := pcommon.NewSlice()
+				require.NoError(t, s.FromRaw([]any{int64(1), int64(2), int64(3)}))
+				return ottl.StandardGetSetter[any]{
+					Getter: func(_ context.Context, _ any) (any, error) {
+						return s, nil
+					},
+				}
+			}(),
+			seed: int64(0),
+			accumulator: ottl.NewTestingLambdaExpression[any]([]string{"acc", "i", "_"}, func(_ context.Context, _ any, resolveBinding func(string) any) (any, error) {
+				acc := resolveBinding("acc")
+				i := resolveBinding("i")
+				return acc.(int64) + i.(int64), nil
+			}),
+			want: int64(3),
+		},
 	}
 
 	for _, tt := range tests {

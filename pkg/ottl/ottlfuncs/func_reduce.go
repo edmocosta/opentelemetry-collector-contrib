@@ -11,7 +11,6 @@ import (
 	"go.opentelemetry.io/collector/pdata/pcommon"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl/internal/ottlcommon"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl/ottlfuncs/internal/funcutil"
 )
 
@@ -74,7 +73,7 @@ func reduceMapValues[K any](tCtx K, source pcommon.Map, lb *ottl.LambdaActivatio
 	var err error
 	acc := seedVal
 	for k, v := range source.All() {
-		if acc, err = accumulateValue(tCtx, lb, acc, k, v); err != nil {
+		if acc, err = funcutil.EvaluateFunction[K, any](tCtx, lb, acc, k, v); err != nil {
 			return nil, fmt.Errorf("error while evaluating accumulator function on map item (%s, %v): %w", k, v, err)
 		}
 	}
@@ -88,25 +87,9 @@ func reduceSliceValues[K any](tCtx K, source pcommon.Slice, lb *ottl.LambdaActiv
 	var err error
 	acc := seedVal
 	for i, v := range source.All() {
-		if acc, err = accumulateValue(tCtx, lb, acc, int64(i), v); err != nil {
+		if acc, err = funcutil.EvaluateFunction[K, any](tCtx, lb, acc, int64(i), v); err != nil {
 			return nil, fmt.Errorf("error while evaluating accumulator function on slice item (%d, %v): %w", i, v, err)
 		}
 	}
 	return acc, nil
-}
-
-func accumulateValue[K any](tCtx K, lb *ottl.LambdaActivation[K], acc, v1, v2 any) (any, error) {
-	err := lb.SetArg(0, acc)
-	if err != nil {
-		return nil, err
-	}
-	err = lb.SetArg(1, ottlcommon.NormalizeValue(v1))
-	if err != nil {
-		return nil, err
-	}
-	err = lb.SetArg(2, ottlcommon.NormalizeValue(v2))
-	if err != nil {
-		return nil, err
-	}
-	return lb.Eval(tCtx)
 }
