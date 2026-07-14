@@ -1,4 +1,4 @@
-include_fragments = none
+include_fragments = "none"
 
 accept = ["200..=299", "429"]
 
